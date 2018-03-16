@@ -31,29 +31,23 @@ app.get("/webhook", function (req, res) {
 });
 
 // Todos eventos de mesenger sera apturados por esta ruta
-app.post('/webhook', (req, res) => {  
- 
-  let body = req.body;
-
-  // Checks this is an event from a page subscription
-  if (body.object === 'page') {
-
-    // Iterates over each entry - there may be multiple if batched
-    body.entry.forEach(function(entry) {
-
-      // Gets the message. entry.messaging is an array, but 
-      // will only ever contain one message, so we get index 0
-      let webhook_event = entry.messaging[0];
-      console.log(webhook_event);
-    });
-
-    // Returns a '200 OK' response to all requests
-    res.status(200).send('EVENT_RECEIVED');
-  } else {
-    // Returns a '404 Not Found' if event is not from a page subscription
-    res.sendStatus(404);
-  }
-
+app.post("/webhook", function (req, res) {
+    // Verificar si el vento proviene del pagina asociada
+    if (req.body.object == "page") {
+        // Si existe multiples entradas entraas
+        req.body.entry.forEach(function(entry) {
+            // Iterara todos lo eventos capturados
+            entry.messaging.forEach(function(event) {
+                if (event.message) {
+                    process_event(event);
+               }else if (event.postback){
+			//		console.log('ha llegado al postback!****')
+				handle_Postback(event);
+				}
+            });
+        });
+        res.sendStatus(200);
+    }
 });
 
 
@@ -62,14 +56,44 @@ function process_event(event){
     // Capturamos los datos del que genera el evento y el mensaje 
     var senderID = event.sender.id;
     var message = event.message;
-    
+	
     // Si en el evento existe un mensaje de tipo texto
     if(message.text){
         // Crear un payload para un simple mensaje de texto
         var response = {
-            "text": 'Enviaste este mensaje: ' + message.text
+            "text": 'Enviaste este mensaje: ' + message.text + '.Ahora enviame una imagen' 
         }
-    }
+    }else if(message.attachments){//modificado
+		
+		// Gets the URL of the message attachment
+    let attachment_url = message.attachments[0].payload.url;
+	
+	 var response = {
+        "attachment": {
+        "type": "template",
+        "payload": {
+          "template_type": "generic",
+          "elements": [{
+            "title": "Is this the right picture?",
+            "subtitle": "Tap a button to answer.",
+            "image_url": attachment_url,
+            "buttons": [
+              {
+                "type": "postback",
+                "title": "Yes!",
+                "payload": "yes",
+              },
+              {
+                "type": "postback",
+                "title": "No!",
+                "payload": "no",
+              }
+            ],
+          }]
+        }
+      }
+        }		
+	}
     
     // Enviamos el mensaje mediante SendAPI
     enviar_texto(senderID, response);
@@ -98,4 +122,25 @@ function enviar_texto(senderID, response){
           console.error("No se puedo enviar el mensaje:" + err);
         }
     }); 
+}
+
+function handle_Postback(event) {
+	
+  var senderID = event.sender.id;
+  var postback1 = event.postback;
+  
+  // Get the payload for the postback
+  let payload = postback1.payload;
+console.log('ha llegado al postback!')
+  // Set the response based on the postback payload
+  if (payload === 'yes') {
+	   var response = {
+            "text": 'Gracias'
+        }
+	  
+  } else if (payload === 'no') {
+    var response = { "text": 'Oops, Intenta enviar otra imagen.' }
+  }
+  // Send the message to acknowledge the postback
+  enviar_texto(senderID, response);
 }
